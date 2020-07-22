@@ -1,5 +1,5 @@
 from Pokedex import Pokédex
-from resnet import get_pose_net
+from resnet import getDiscriminator, getGenerator
 
 import torch
 from torch import nn
@@ -8,13 +8,18 @@ from torch.utils.data import DataLoader
 
 import argparse
 import time
+from os.path import join as ops
 
 parser = argparse.ArgumentParser(
     description="Pokémon, Getto Daze!")
 train_set = parser.add_mutually_exclusive_group()
+parser.add_argument('task', default='d',
+                    help='d | g')
 parser.add_argument('--batch_size', default=4, type=int,
                     help='Batch size for training')
-parser.add_argument('--resume', type=str,
+parser.add_argument('--gnet', type=str,
+                    help='Checkpoint state_dict file to resume training from')
+parser.add_argument('--dnet', type=str,
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--epochs', default=70, type=int,
                     help='the number of training epochs')
@@ -26,14 +31,20 @@ args = parser.parse_args()
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 # @profile
-def train_one_epoch(loader, net, criterion, optimizer, epoch):
+def train_one_epoch(loader, dnet, gnet, criterion, optimizer, epoch, size):
     loss_amount = 0
     # load train data
     for iteration, batch in enumerate(loader):
         # forward & backprop
         optimizer.zero_grad()
-        preds = net(batch.permute(0,3,1,2).type(torch.float))
-        loss = criterion(preds['cls'], torch.zeros(preds['cls'].size()[0],preds['cls'].size()[2],preds['cls'].size()[3]).type(torch.long))
+        
+        shuffle = torch.randperm(size*2)
+        fakePoké = gnet(torch.randn(size,64,8,8))
+        Pokémon = batch.permute(0,3,1,2).type(torch.float)
+        samples = torch.cat([fakePoké, Pokémon], 0)[shuffle]
+        labels = torch.cat([torch.zeros(size), torch.ones(size)], 0)[shuffle]
+        preds = dnet(samples)
+        loss = criterion(preds, labels.type(torch.long))
         loss.backward()
         optimizer.step()
         loss_amount += loss.item()
@@ -45,20 +56,32 @@ def train_one_epoch(loader, net, criterion, optimizer, epoch):
 
 def train():
     torch.backends.cudnn.benchmark = True
-    heads = {'cls':2}
-    net = get_pose_net(
-        18, heads, 64
-    )
-    if args.resume:
-        missing, unexpected = net.load_state_dict(torch.load(args.resume))
+    Gnet = getGenerator()
+    Dnet = getDiscriminator(18)
+
+    if args.gnet:
+        missing, unexpected = Gnet.load_state_dict(torch.load(args.gnet))
         if missing:
             print('Missing:', missing)
         if unexpected:
             print('Unexpected:', unexpected)
-    net.train()
+    if args.dnet:
+        missing, unexpected = Dnet.load_state_dict(torch.load(args.dnet))
+        if missing:
+            print('Missing:', missing)
+        if unexpected:
+            print('Unexpected:', unexpected)
 
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9,
-                          weight_decay=5e-4)
+    if args.task == 'd':
+        Dnet.train()
+        Gnet.eval()
+        optimizer = optim.SGD(Dnet.parameters(), lr=args.lr, momentum=0.9,
+                        weight_decay=5e-4)
+    elif args.task == 'g':
+        Gnet.train()
+        Dnet.eval()
+        optimizer = optim.SGD(Gnet.parameters(), lr=args.lr, momentum=0.9,
+                        weight_decay=5e-4)
 
     for param_group in optimizer.param_groups:
         param_group['initial_lr'] = args.lr
@@ -77,11 +100,12 @@ def train():
 
     # create batch iterator
     for iteration in range(args.start_iter + 1, args.epochs):
-        loss = train_one_epoch(PokéBall, net, criterion, optimizer, iteration)
+        loss = train_one_epoch(PokéBall, Dnet, Gnet, criterion, optimizer, iteration, args.batch_size)
         adjust_learning_rate.step()
         if not (iteration-args.start_iter) == 0:
-            torch.save(net.state_dict(), args.save_folder + 'Pokémonet_%03d_%d.pth' % (iteration, loss))
-        torch.save(net.state_dict(),
-                    args.save_folder + 'Pokémonet_%d_%d.pth' % (iteration, loss))
+            torch.save(Dnet.state_dict() if args.task == 'd' else Gnet.state_dict(),
+                        ops(args.save_folder, args.task, 'Pokémonet_%03d_%d.pth' % (iteration, loss)))
+        torch.save(Dnet.state_dict() if args.task == 'd' else Gnet.state_dict(),
+                    ops(args.save_folder, args.task, 'Pokémonet_%03d_%d.pth' % (args.epochs, loss)))
 if __name__ == '__main__':
     train()
