@@ -14,6 +14,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
+import math
 
 BN_MOMENTUM = 0.1
 
@@ -192,55 +193,49 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
+        c = x
         x = self.global_pool(x)
         x = self.classifier(x)
         x = self.f(x.squeeze(2).squeeze(2))
-        return x
+        return x, c
 
     def init_weights(self, num_layers, pretrained=True):
-        if pretrained:
-            # print('=> init final conv weights from normal distribution')
-            #pretrained_state_dict = torch.load(pretrained)
-            url = model_urls['resnet{}'.format(num_layers)]
-            pretrained_state_dict = model_zoo.load_url(url)
-            print('=> loading pretrained model {}'.format(url))
-            self.load_state_dict(pretrained_state_dict, strict=False)
-        else:
-            print('=> imagenet pretrained model dose not exist')
-            print('=> please download it first')
-            raise ValueError('imagenet pretrained model does not exist')
+        # if pretrained:
+        #     # print('=> init final conv weights from normal distribution')
+        #     #pretrained_state_dict = torch.load(pretrained)
+        #     url = model_urls['resnet{}'.format(num_layers)]
+        #     pretrained_state_dict = model_zoo.load_url(url)
+        #     print('=> loading pretrained model {}'.format(url))
+        #     self.load_state_dict(pretrained_state_dict, strict=False)
+        # else:
+        #     print('=> imagenet pretrained model dose not exist')
+        #     print('=> please download it first')
+        #     raise ValueError('imagenet pretrained model does not exist')
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                n = m.weight.size(1)
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
 
 class Generator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.inplanes = 64
+        self.inplanes = 512
         self.deconv_with_bias = False
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
             5,
-            [512, 256, 128, 64, 3],
+            [256, 256, 128, 64, 3],
             [4, 4, 4, 4, 4],
         )
-    # self.final_layer = []
-
-    # for head in sorted(self.heads):
-    #   num_output = self.heads[head]
-    #   if head_conv > 0:
-    #     fc = nn.Sequential(
-    #         nn.Conv2d(256, head_conv,
-    #           kernel_size=3, padding=1, bias=True),
-    #         nn.ReLU(inplace=True),
-    #         nn.Conv2d(head_conv, num_output, 
-    #           kernel_size=1, stride=1, padding=0))
-    #   else:
-    #     fc = nn.Conv2d(
-    #       in_channels=256,
-    #       out_channels=num_output,
-    #       kernel_size=1,
-    #       stride=1,
-    #       padding=0
-    #   )
-    #   self.__setattr__(head, fc)
 
     def _get_deconv_cfg(self, deconv_kernel, index):
         if deconv_kernel == 4:
