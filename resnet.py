@@ -39,7 +39,7 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
         self.downsample = downsample
@@ -78,7 +78,7 @@ class Bottleneck(nn.Module):
                                bias=False)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion,
                                   momentum=BN_MOMENTUM)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
 
@@ -112,19 +112,19 @@ class ResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = nn.BatchNorm2d(64, momentum=BN_MOMENTUM)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.relu = nn.LeakyReLU(inplace=True)
+        self.maxpool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
-        self.global_pool = nn.AdaptiveAvgPool2d((1,1))
-        self.classifier = nn.Sequential(
-            nn.Conv2d(512, 1280, 1, 1, 0, bias=True),
-            nn.ReLU(inplace=True)
-        )
-        self.f = nn.Linear(1280, num_classes)
+        # self.global_pool = nn.AdaptiveAvgPool2d((1,1))
+        # self.classifier = nn.Sequential(
+        #     nn.Conv2d(512, 1280, 1, 1, 0, bias=True),
+        #     nn.LeakyReLU(inplace=True)
+        # )
+        # self.f = nn.Linear(1280, num_classes)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -178,7 +178,7 @@ class ResNet(nn.Module):
                     output_padding=output_padding,
                     bias=self.deconv_with_bias))
             layers.append(nn.BatchNorm2d(planes, momentum=BN_MOMENTUM))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             self.inplanes = planes
 
         return nn.Sequential(*layers)
@@ -193,11 +193,11 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        c = x
-        x = self.global_pool(x)
-        x = self.classifier(x)
-        x = self.f(x.squeeze(2).squeeze(2))
-        return x, c
+        # c = x
+        # x = self.global_pool(x)
+        # x = self.classifier(x)
+        # x = self.f(x.squeeze(2).squeeze(2))
+        return x#, c
 
     def init_weights(self, num_layers, pretrained=True):
         # if pretrained:
@@ -272,7 +272,7 @@ class Generator(nn.Module):
                     output_padding=output_padding,
                     bias=self.deconv_with_bias))
             layers.append(nn.BatchNorm2d(planes, momentum=BN_MOMENTUM))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
             self.inplanes = planes
 
         return nn.Sequential(*layers)
@@ -303,7 +303,7 @@ resnet_spec = {18: (BasicBlock, [2, 2, 2, 2]),
                152: (Bottleneck, [3, 8, 36, 3])}
 
 
-def getDiscriminator(num_layers, num_classes=2):
+def getDiscriminator(num_layers, num_classes=1):
   block_class, layers = resnet_spec[num_layers]
 
   model = ResNet(block_class, layers, num_classes)
@@ -315,3 +315,21 @@ def getGenerator():
   model.init_weights()
   return model
 
+
+class lasthope(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.block = BasicBlock(512, 512)
+        self.global_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.classifier = nn.Sequential(
+            nn.Conv2d(512, 1280, 1, 1, 0, bias=True),
+            nn.LeakyReLU(inplace=True)
+        )
+        self.f = nn.Linear(1280, 1)
+    
+    def forward(self, x):
+        x = self.block(x)
+        x = self.global_pool(x)
+        x = self.classifier(x)
+        x = self.f(x.squeeze())
+        return x
