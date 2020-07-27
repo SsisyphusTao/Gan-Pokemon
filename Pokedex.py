@@ -21,6 +21,6 @@ class Pokédex(Dataset):
         if np.random.randint(2):
             return self.Pokémons[index]
         else:
-            return cv.flip(self.Pokémons[index], 1)
+            return cv.flip(self.Pokémons[index], np.random.randint(2)-1)
 
     name = 'Pokedex'
