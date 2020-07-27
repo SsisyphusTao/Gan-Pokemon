@@ -105,7 +105,7 @@ def train():
     sdnet = snDiscriminator()
 
     # optimizerD = optim.RMSprop(sngnet.parameters(), lr=args.lr*4)
-    optimizerD = optim.Adam(sdnet.parameters(),lr=args.lr*4,betas=(0.5,0.999))
+    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, sdnet.parameters()), lr=args.lr*4,betas=(0.5,0.999))
     optimizerG = optim.Adam(sgnet.parameters(),lr=args.lr,betas=(0.5,0.999))
     # for param_group in optimizer.param_groups:
     #     param_group['initial_lr'] = args.lr
@@ -133,7 +133,7 @@ def train():
 
         sgnet.train()
         sdnet.eval()
-        for i in range(3):
+        for i in range(5):
             loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
         if not (iteration-args.start_iter) == 0 and iteration % 10 == 0:
             torch.save(sdnet.state_dict(),

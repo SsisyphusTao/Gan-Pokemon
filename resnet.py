@@ -326,11 +326,11 @@ class ResBlockGenerator(nn.Module):
 
         self.model = nn.Sequential(
             nn.BatchNorm2d(in_channels),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Upsample(scale_factor=2),
             self.conv1,
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             self.conv2
             )
         self.bypass = nn.Sequential()
@@ -348,7 +348,7 @@ class snGenerator(nn.Module):
         super().__init__()
         self.z_dim = z_dim
 
-        self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
+        self.dense = nn.Linear(self.z_dim, 2 * 2 * GEN_SIZE)
         self.final = nn.Conv2d(GEN_SIZE, 128, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
@@ -356,12 +356,12 @@ class snGenerator(nn.Module):
         self.model = nn.Sequential(
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             nn.BatchNorm2d(GEN_SIZE),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             self.final,
             nn.Tanh())
 
     def forward(self, z):
-        return self.model(self.dense(z).view(-1, GEN_SIZE, 4, 4))
+        return self.model(self.dense(z).view(-1, GEN_SIZE, 2, 2))
 
 class ResBlockDiscriminator(nn.Module):
 
@@ -375,16 +375,16 @@ class ResBlockDiscriminator(nn.Module):
 
         if stride == 1:
             self.model = nn.Sequential(
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 SpectralNorm(self.conv1),
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 SpectralNorm(self.conv2)
                 )
         else:
             self.model = nn.Sequential(
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 SpectralNorm(self.conv1),
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 SpectralNorm(self.conv2),
                 nn.AvgPool2d(2, stride=stride, padding=0)
                 )
@@ -426,7 +426,7 @@ class FirstResBlockDiscriminator(nn.Module):
         # we don't want to apply ReLU activation to raw image before convolution transformation.
         self.model = nn.Sequential(
             SpectralNorm(self.conv1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             SpectralNorm(self.conv2),
             nn.AvgPool2d(2)
             )
@@ -445,7 +445,7 @@ class snDiscriminator(nn.Module):
         self.model = nn.Sequential(
                 FirstResBlockDiscriminator(128, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
-                nn.ReLU(),
+                nn.LeakyReLU(),
                 nn.AvgPool2d(2),
             )
         self.fc = nn.Linear(DISC_SIZE, 1)
