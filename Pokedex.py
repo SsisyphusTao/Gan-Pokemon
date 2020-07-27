@@ -18,9 +18,14 @@ class Pokédex(Dataset):
         return len(self.Pokémons)
     
     def __getitem__(self, index):
-        if np.random.randint(2):
-            return self.Pokémons[index]
+        pokémon = self.Pokémons[index]
+        a = np.random.randint(90)
+        m = cv.getRotationMatrix2D((64,64), a, 1)
+        pokémon = cv.warpAffine(pokémon, m, (128,128))
+
+        if np.random.randint(4):
+            return cv.flip(pokémon, np.random.randint(2)-1)
         else:
-            return cv.flip(self.Pokémons[index], np.random.randint(2)-1)
+            return pokémon
 
     name = 'Pokedex'

@@ -15,9 +15,9 @@ parser = argparse.ArgumentParser(
 train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--batch_size', default=64, type=int,
                     help='Batch size for training')
-parser.add_argument('--gnet', type=str, default=None,
+parser.add_argument('--gnet', type=str, default='checkpoints/Pokemonet_sg.pth400',
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--dnet', type=str, default=None,
+parser.add_argument('--dnet', type=str, default='checkpoints/Pokemonet_sd.pth400',
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--epochs', '-e', default=400, type=int,
                     help='the number of training epochs')
@@ -46,7 +46,7 @@ def train_dnet(loader, dnet, sgnet, sdnet, optimizer):
         preds_r = sdnet(Pokécore).mean()
         preds_f = sdnet(fakecore).mean()
 
-        loss = -preds_r + preds_f
+        loss = - preds_r * 0.5 + preds_f
         loss.backward()
         optimizer.step()
         loss_amount += loss.item()
@@ -65,7 +65,7 @@ def train_gnet(loader, sgnet, sdnet, optimizer):
 
         Pokécore = sgnet(torch.randn(size*2,100))
         
-        loss = -sdnet(Pokécore).mean()
+        loss = -sdnet(Pokécore).mean() * 0.75
         loss.backward()
 
         optimizer.step()
@@ -82,7 +82,7 @@ def train_encoder_decoder(loader, dnet, gnet, criterion, optimizerD, optimizerG)
         optimizerG.zero_grad()
         
         Pokémon = batch.permute(0,3,1,2).type(torch.float).cuda()
-        _, cores = dnet(Pokémon)
+        cores = dnet(Pokémon)
         fakePoké = gnet(cores)
 
         loss = criterion(fakePoké, Pokémon)
@@ -98,19 +98,23 @@ def train():
     torch.backends.cudnn.benchmark = True
     # Gnet = getGenerator().cuda()
     Dnet = getDiscriminator(18).cuda()
-    # Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
-    Dnet.load_state_dict(torch.load('checkpoints/Pokemonet_d.pth'))
+    # Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth400'))
+    Dnet.load_state_dict(torch.load('checkpoints/Pokemonet_d.pth400'))
 
     sgnet = snGenerator(100)
     sdnet = snDiscriminator()
+    # if args.gnet:
+    #     sgnet.load_state_dict(torch.load(args.gnet))
+    # if args.dnet:
+    #     sdnet.load_state_dict(torch.load(args.dnet))
 
-    # optimizerD = optim.RMSprop(sngnet.parameters(), lr=args.lr*4)
+    # optimizerD = optim.SGD(Dnet.parameters(), lr=args.lr*4, momentum=0.9,
+    #                       weight_decay=5e-4)
+    # optimizerG = optim.SGD(Gnet.parameters(), lr=args.lr, momentum=0.9,
+    #                       weight_decay=5e-4)
+
     optimizerD = optim.Adam(filter(lambda p: p.requires_grad, sdnet.parameters()), lr=args.lr*4,betas=(0.5,0.999))
     optimizerG = optim.Adam(sgnet.parameters(),lr=args.lr,betas=(0.5,0.999))
-    # for param_group in optimizer.param_groups:
-    #     param_group['initial_lr'] = args.lr
-    # adjust_learning_rate = optim.lr_scheduler.MultiStepLR(optimizer, [35, 55], 0.1, args.start_iter)
-    # adjust_learning_rate = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs, args.start_iter)
     criterion = nn.SmoothL1Loss().cuda()
 
     print('Loading the dataset...')
@@ -119,7 +123,6 @@ def train():
     print('Training GhostNet on:', data.name)
     print('Using the specified args:')
     print(args)
-    # Gnet.eval()
     Dnet.eval()
     # create batch iterator
     for iteration in range(args.start_iter + 1, args.epochs):
@@ -135,7 +138,7 @@ def train():
         sdnet.eval()
         for i in range(5):
             loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
-        if not (iteration-args.start_iter) == 0 and iteration % 10 == 0:
+        if not (iteration-args.start_iter) == 0 and iteration % 50 == 0:
             torch.save(sdnet.state_dict(),
                         ops('checkpoints', 'd', 'Pokemonet_sd.pth%03d' % iteration))
             torch.save(sgnet.state_dict(),

@@ -226,7 +226,7 @@ class ResNet(nn.Module):
 class Generator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.inplanes = 512
+        self.inplanes = 128
         self.deconv_with_bias = False
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
