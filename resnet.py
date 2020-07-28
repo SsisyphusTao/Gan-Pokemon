@@ -344,24 +344,27 @@ GEN_SIZE=128
 DISC_SIZE=128
 
 class snGenerator(nn.Module):
-    def __init__(self, z_dim):
+    def __init__(self, z_dim, pretrained=True):
         super().__init__()
         self.z_dim = z_dim
 
-        self.dense = nn.Linear(self.z_dim, 2 * 2 * GEN_SIZE)
+        self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
         self.final = nn.Conv2d(GEN_SIZE, 128, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
 
-        self.model = nn.Sequential(
-            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
-            nn.BatchNorm2d(GEN_SIZE),
-            nn.LeakyReLU(),
-            self.final,
-            nn.Tanh())
+        # self.model = nn.Sequential(
+        #     ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
+        #     nn.BatchNorm2d(GEN_SIZE),
+        #     nn.LeakyReLU(),
+        #     self.final,
+        #     nn.Tanh())
+        self.model = getGenerator()
+        if pretrained:
+            self.model.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
 
     def forward(self, z):
-        return self.model(self.dense(z).view(-1, GEN_SIZE, 2, 2))
+        return self.model(self.dense(z).view(-1, GEN_SIZE, 4, 4))
 
 class ResBlockDiscriminator(nn.Module):
 
@@ -443,10 +446,12 @@ class snDiscriminator(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-                FirstResBlockDiscriminator(128, DISC_SIZE, stride=2),
+                FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(),
-                nn.AvgPool2d(2),
+                nn.AvgPool2d(8),
             )
         self.fc = nn.Linear(DISC_SIZE, 1)
         nn.init.xavier_uniform_(self.fc.weight.data, 1.)

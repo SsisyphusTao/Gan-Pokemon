@@ -29,7 +29,7 @@ args = parser.parse_args()
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-def train_dnet(loader, dnet, sgnet, sdnet, optimizer):
+def train_dnet(loader, dnet, gnet, sgnet, sdnet, optimizer):
     loss_amount = 0
     # load train data
     for iteration, batch in enumerate(loader):
@@ -42,11 +42,14 @@ def train_dnet(loader, dnet, sgnet, sdnet, optimizer):
         size = Pokémon.size()[0]
 
         Pokécore = dnet(Pokémon)
-        fakecore = sgnet(torch.randn(size,100))
-        preds_r = sdnet(Pokécore).mean()
-        preds_f = sdnet(fakecore).mean()
+        blurPoké = gnet(Pokécore)
 
-        loss = - preds_r * 0.5 + preds_f
+        fakePoké = sgnet(torch.randn(size * 2,100))
+        preds_r = sdnet(Pokémon).mean()
+        preds_b = sdnet(blurPoké).mean()
+        preds_f = sdnet(fakePoké).mean()
+
+        loss = - preds_b * 0.5 + preds_r * 0.8 + preds_f * 0.75
         loss.backward()
         optimizer.step()
         loss_amount += loss.item()
@@ -63,9 +66,9 @@ def train_gnet(loader, sgnet, sdnet, optimizer):
         Pokémon = batch.permute(0,3,1,2).type(torch.float).cuda()
         size = Pokémon.size()[0]
 
-        Pokécore = sgnet(torch.randn(size*2,100))
+        realPoké = sgnet(torch.randn(size*2,100))
         
-        loss = -sdnet(Pokécore).mean() * 0.75
+        loss = -sdnet(realPoké).mean() * 0.75
         loss.backward()
 
         optimizer.step()
@@ -96,13 +99,13 @@ def train_encoder_decoder(loader, dnet, gnet, criterion, optimizerD, optimizerG)
 def train():
 
     torch.backends.cudnn.benchmark = True
-    # Gnet = getGenerator().cuda()
+    Gnet = getGenerator().cuda()
     Dnet = getDiscriminator(18).cuda()
-    # Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth400'))
-    Dnet.load_state_dict(torch.load('checkpoints/Pokemonet_d.pth400'))
+    Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
+    Dnet.load_state_dict(torch.load('checkpoints/Pokemonet_d.pth'))
 
-    sgnet = snGenerator(100)
-    sdnet = snDiscriminator()
+    sgnet = snGenerator(100).cuda()
+    sdnet = snDiscriminator().cuda()
     # if args.gnet:
     #     sgnet.load_state_dict(torch.load(args.gnet))
     # if args.dnet:
@@ -132,7 +135,7 @@ def train():
         # train_encoder_decoder(PokéBall, Dnet, Gnet, criterion, optimizerD, optimizerG)
         sdnet.train()
         sgnet.eval()
-        loss_d = train_dnet(PokéBall, Dnet, sgnet, sdnet, optimizerD)
+        loss_d = train_dnet(PokéBall, Dnet, Gnet, sgnet, sdnet, optimizerD)
 
         sgnet.train()
         sdnet.eval()
