@@ -29,7 +29,7 @@ args = parser.parse_args()
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-def train_dnet(loader, dnet, gnet, sgnet, sdnet, optimizer):
+def train_dnet(loader, dnet, sgnet, sdnet, optimizer):
     loss_amount = 0
     # load train data
     for iteration, batch in enumerate(loader):
@@ -42,14 +42,12 @@ def train_dnet(loader, dnet, gnet, sgnet, sdnet, optimizer):
         size = Pokémon.size()[0]
 
         Pokécore = dnet(Pokémon)
-        blurPoké = gnet(Pokécore)
+        fakePoké = sgnet(torch.randn(size, 100))
 
-        fakePoké = sgnet(torch.randn(size * 2,100))
-        preds_r = sdnet(Pokémon).mean()
-        preds_b = sdnet(blurPoké).mean()
+        preds_r = sdnet(Pokécore).mean()
         preds_f = sdnet(fakePoké).mean()
 
-        loss = - preds_b * 0.5 + preds_r * 0.8 + preds_f * 0.75
+        loss = - preds_r * 0.5 + preds_f
         loss.backward()
         optimizer.step()
         loss_amount += loss.item()
@@ -99,9 +97,9 @@ def train_encoder_decoder(loader, dnet, gnet, criterion, optimizerD, optimizerG)
 def train():
 
     torch.backends.cudnn.benchmark = True
-    Gnet = getGenerator().cuda()
+    # Gnet = getGenerator().cuda()
     Dnet = getDiscriminator(18).cuda()
-    Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
+    # Gnet.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
     Dnet.load_state_dict(torch.load('checkpoints/Pokemonet_d.pth'))
 
     sgnet = snGenerator(100).cuda()
@@ -126,21 +124,22 @@ def train():
     print('Training GhostNet on:', data.name)
     print('Using the specified args:')
     print(args)
+
     Dnet.eval()
+    # Dnet.train()
+    # Gnet.train()
     # create batch iterator
     for iteration in range(args.start_iter + 1, args.epochs):
         print('Epoch %d' % iteration, end=' ')
-        # Dnet.train()
-        # Gnet.train()
         # train_encoder_decoder(PokéBall, Dnet, Gnet, criterion, optimizerD, optimizerG)
         sdnet.train()
         sgnet.eval()
-        loss_d = train_dnet(PokéBall, Dnet, Gnet, sgnet, sdnet, optimizerD)
-
+        loss_d = train_dnet(PokéBall, Dnet, sgnet, sdnet, optimizerD)
         sgnet.train()
         sdnet.eval()
         for i in range(5):
             loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
+        data.shuffle()
         if not (iteration-args.start_iter) == 0 and iteration % 50 == 0:
             torch.save(sdnet.state_dict(),
                         ops('checkpoints', 'd', 'Pokemonet_sd.pth%03d' % iteration))

@@ -3,3 +3,5 @@
 *checkpoints
 .DS_Store
 test.py
+Pokemons.h5
+*.zip

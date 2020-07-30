@@ -119,7 +119,7 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 16, layers[0])
         self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 128, layers[3], stride=2)
+        # self.layer4 = self._make_layer(block, 128, layers[3], stride=2)
 
         # self.global_pool = nn.AdaptiveAvgPool2d((1,1))
         # self.classifier = nn.Sequential(
@@ -194,7 +194,7 @@ class ResNet(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)
+        # x = self.layer4(x)
         return x
 
     def init_weights(self, num_layers, pretrained=True):
@@ -226,13 +226,13 @@ class ResNet(nn.Module):
 class Generator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.inplanes = 128
+        self.inplanes = 64
         self.deconv_with_bias = False
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
-            5,
-            [256, 256, 128, 64, 3],
-            [4, 4, 4, 4, 4],
+            4,
+            [256, 128, 64, 3],
+            [4, 4, 4, 4],
         )
 
     def _get_deconv_cfg(self, deconv_kernel, index):
@@ -349,19 +349,16 @@ class snGenerator(nn.Module):
         self.z_dim = z_dim
 
         self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
-        self.final = nn.Conv2d(GEN_SIZE, 128, 3, stride=1, padding=1)
+        self.final = nn.Conv2d(GEN_SIZE, 64, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
 
-        # self.model = nn.Sequential(
-        #     ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
-        #     nn.BatchNorm2d(GEN_SIZE),
-        #     nn.LeakyReLU(),
-        #     self.final,
-        #     nn.Tanh())
-        self.model = getGenerator()
-        if pretrained:
-            self.model.load_state_dict(torch.load('checkpoints/Pokemonet_g.pth'))
+        self.model = nn.Sequential(
+            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
+            nn.BatchNorm2d(GEN_SIZE),
+            nn.LeakyReLU(),
+            self.final,
+            nn.Tanh())
 
     def forward(self, z):
         return self.model(self.dense(z).view(-1, GEN_SIZE, 4, 4))
@@ -446,12 +443,10 @@ class snDiscriminator(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-                FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
+                FirstResBlockDiscriminator(64, DISC_SIZE),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(),
-                nn.AvgPool2d(8),
+                nn.AvgPool2d(4),
             )
         self.fc = nn.Linear(DISC_SIZE, 1)
         nn.init.xavier_uniform_(self.fc.weight.data, 1.)
