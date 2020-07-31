@@ -120,6 +120,9 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
         # self.layer4 = self._make_layer(block, 128, layers[3], stride=2)
+        self.final = nn.Sequential(
+            nn.Conv2d(64, 128, 3, stride=1, padding=1),
+            nn.Tanh())
 
         # self.global_pool = nn.AdaptiveAvgPool2d((1,1))
         # self.classifier = nn.Sequential(
@@ -195,6 +198,7 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         # x = self.layer4(x)
+        x = self.final(x)
         return x
 
     def init_weights(self, num_layers, pretrained=True):
@@ -226,7 +230,7 @@ class ResNet(nn.Module):
 class Generator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.inplanes = 64
+        self.inplanes = 128
         self.deconv_with_bias = False
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
@@ -341,7 +345,7 @@ class ResBlockGenerator(nn.Module):
         return self.model(x) + self.bypass(x)
 
 GEN_SIZE=128
-DISC_SIZE=128
+DISC_SIZE=64
 
 class snGenerator(nn.Module):
     def __init__(self, z_dim, pretrained=True):
@@ -349,7 +353,7 @@ class snGenerator(nn.Module):
         self.z_dim = z_dim
 
         self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
-        self.final = nn.Conv2d(GEN_SIZE, 64, 3, stride=1, padding=1)
+        self.final = nn.Conv2d(GEN_SIZE, GEN_SIZE, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
 
