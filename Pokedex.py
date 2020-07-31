@@ -12,7 +12,7 @@ class Pokédex(Dataset):
         super().__init__()
         self.Pokémons = []
         for i in listdir('Pokemons'):
-            self.Pokémons.append((cv.imread('Pokemons/'+i).astype(np.float32) - mean) / std)
+            self.Pokémons.append((cv.resize(cv.imread('Pokemons/'+i), (32,32)).astype(np.float32) - mean) / std)
         self.shuffle()
 
     def __len__(self):

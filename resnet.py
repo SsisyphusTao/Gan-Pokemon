@@ -345,7 +345,7 @@ class ResBlockGenerator(nn.Module):
         return self.model(x) + self.bypass(x)
 
 GEN_SIZE=128
-DISC_SIZE=64
+DISC_SIZE=128
 
 class snGenerator(nn.Module):
     def __init__(self, z_dim, pretrained=True):
@@ -353,11 +353,13 @@ class snGenerator(nn.Module):
         self.z_dim = z_dim
 
         self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
-        self.final = nn.Conv2d(GEN_SIZE, GEN_SIZE, 3, stride=1, padding=1)
+        self.final = nn.Conv2d(GEN_SIZE, 3, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
 
         self.model = nn.Sequential(
+            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
+            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             nn.BatchNorm2d(GEN_SIZE),
             nn.LeakyReLU(),
@@ -447,10 +449,12 @@ class snDiscriminator(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-                FirstResBlockDiscriminator(64, DISC_SIZE),
+                FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(),
-                nn.AvgPool2d(4),
+                nn.AvgPool2d(8),
             )
         self.fc = nn.Linear(DISC_SIZE, 1)
         nn.init.xavier_uniform_(self.fc.weight.data, 1.)
