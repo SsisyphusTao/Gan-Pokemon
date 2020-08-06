@@ -15,19 +15,21 @@ parser = argparse.ArgumentParser(
 train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--batch_size', default=64, type=int,
                     help='Batch size for training')
-parser.add_argument('--gnet', type=str, default='checkpoints/Pokemonet_sg.pth010',
+parser.add_argument('--gnet', type=str, default='checkpoints/Pokemonet_sg.pth',
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--dnet', type=str, default='checkpoints/Pokemonet_sd.pth010',
+parser.add_argument('--dnet', type=str, default='checkpoints/Pokemonet_sd.pth',
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--epochs', '-e', default=800, type=int,
+parser.add_argument('--epochs', '-e', default=400, type=int,
                     help='the number of training epochs')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-5, type=float,
                     help='initial learning rate')
 args = parser.parse_args()
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
+one = torch.tensor(1)
+mone = torch.tensor(-1)
 
 def train_dnet(loader, sgnet, sdnet, optimizer):
     loss_amount = 0
@@ -36,7 +38,7 @@ def train_dnet(loader, sgnet, sdnet, optimizer):
         # forward & backprop
         optimizer.zero_grad()
         for p in filter(lambda p: p.requires_grad, sdnet.parameters()):
-            p.data.clamp_(-0.01, 0.01)
+            p.data.clamp_(-0.001, 0.001)
         
         Pokémon = batch.permute(0,3,1,2).type(torch.float).cuda()
         size = Pokémon.size()[0]
@@ -48,11 +50,12 @@ def train_dnet(loader, sgnet, sdnet, optimizer):
         alpha = np.random.rand() / 10 + 0.9
         beta = np.random.rand() / 10 + 0.9
         if np.random.rand() > 0.05:
-            loss = - preds_r * alpha + preds_f * beta
+            preds_r.backward(one*alpha)
+            preds_f.backward(mone*beta)
         else:
-            loss = preds_r * alpha - preds_f * beta
-
-        loss.backward()
+            preds_f.backward(one*alpha)
+            preds_r.backward(mone*beta)
+        loss=preds_r-preds_f
         optimizer.step()
         loss_amount += loss.item()
     print('Dnet Loss: %.6f' % (loss_amount/iteration))
@@ -70,12 +73,12 @@ def train_gnet(loader, sgnet, sdnet, optimizer):
 
         realPoké = sgnet(torch.randn(size,100))
         
-        loss = -sdnet(realPoké).mean()
-        loss.backward()
+        loss = sdnet(realPoké).mean()
+        loss.backward(one)
 
         optimizer.step()
         loss_amount += loss.item()
-    print('    Gnet Loss: %.6f' % (loss_amount/iteration))
+    print('Gnet Loss: %.6f' % (loss_amount/iteration))
     return loss_amount/iteration
 
 def train_encoder_decoder(loader, dnet, gnet, criterion, optimizerD, optimizerG):
@@ -108,10 +111,10 @@ def train():
 
     sgnet = snGenerator(100).cuda()
     sdnet = snDiscriminator().cuda()
-    # if args.gnet:
-    #     sgnet.load_state_dict(torch.load(args.gnet))
-    # if args.dnet:
-    #     sdnet.load_state_dict(torch.load(args.dnet))
+    if args.gnet:
+        sgnet.load_state_dict(torch.load(args.gnet))
+    if args.dnet:
+        sdnet.load_state_dict(torch.load(args.dnet))
 
     # optimizerD = optim.SGD(Dnet.parameters(), lr=args.lr*4, momentum=0.9,
     #                       weight_decay=5e-4)
@@ -140,11 +143,10 @@ def train():
     sdnet.train()
     sgnet.train()
     for iteration in range(args.start_iter + 1, args.epochs):
-        print('Epoch %d' % iteration, end=' ')
+        print('Epoch %d' % iteration)
         # train_encoder_decoder(PokéBall, Dnet, Gnet, criterion, optimizerD, optimizerG)
         loss_d = train_dnet(PokéBall, sgnet, sdnet, optimizerD)
-        for i in range(2):
-            loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
+        loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
         data.shuffle()
         if not (iteration-args.start_iter) == 0 and iteration % 10 == 0:
             torch.save(sdnet.state_dict(),
