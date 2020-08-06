@@ -352,13 +352,12 @@ class snGenerator(nn.Module):
         super().__init__()
         self.z_dim = z_dim
 
-        self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
+        self.dense = nn.Linear(self.z_dim, 8 * 8 * GEN_SIZE)
         self.final = nn.Conv2d(GEN_SIZE, 3, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
 
         self.model = nn.Sequential(
-            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
@@ -368,7 +367,7 @@ class snGenerator(nn.Module):
             nn.Tanh())
 
     def forward(self, z):
-        return self.model(self.dense(z).view(-1, GEN_SIZE, 4, 4))
+        return self.model(self.dense(z).view(-1, GEN_SIZE, 8, 8))
 
 class ResBlockDiscriminator(nn.Module):
 
@@ -453,7 +452,6 @@ class snDiscriminator(nn.Module):
                 FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(),
                 nn.AvgPool2d(8),
@@ -463,4 +461,5 @@ class snDiscriminator(nn.Module):
         self.fc = SpectralNorm(self.fc)
 
     def forward(self, x):
+        x = torch.nn.functional.interpolate(x, size=[32,32], mode='bilinear', align_corners=True)
         return self.fc(self.model(x).view(-1,DISC_SIZE))

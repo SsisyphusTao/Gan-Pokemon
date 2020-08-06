@@ -29,14 +29,14 @@ args = parser.parse_args()
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 
-def train_dnet(loader, sgnet, sdnet, optimizer, N):
+def train_dnet(loader, sgnet, sdnet, optimizer):
     loss_amount = 0
     # load train data
     for iteration, batch in enumerate(loader):
         # forward & backprop
         optimizer.zero_grad()
         for p in filter(lambda p: p.requires_grad, sdnet.parameters()):
-            p.data.clamp_(-1., 1.)
+            p.data.clamp_(-0.01, 0.01)
         
         Pokémon = batch.permute(0,3,1,2).type(torch.float).cuda()
         size = Pokémon.size()[0]
@@ -44,8 +44,14 @@ def train_dnet(loader, sgnet, sdnet, optimizer, N):
 
         preds_r = sdnet(Pokémon).mean()
         preds_f = sdnet(fakePoké).mean()
+        
+        alpha = np.random.rand() / 10 + 0.9
+        beta = np.random.rand() / 10 + 0.9
+        if np.random.rand() > 0.05:
+            loss = - preds_r * alpha + preds_f * beta
+        else:
+            loss = preds_r * alpha - preds_f * beta
 
-        loss = - preds_r * N + preds_f
         loss.backward()
         optimizer.step()
         loss_amount += loss.item()
@@ -116,8 +122,8 @@ def train():
     #                       weight_decay=5e-4)
     # optimizerG = optim.SGD(sgnet.parameters(), lr=args.lr, momentum=0.9,
     #                       weight_decay=5e-4)
-    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, sdnet.parameters()), lr=args.lr*4,betas=(0.5,0.999))
-    optimizerG = optim.Adam(sgnet.parameters(),lr=args.lr,betas=(0.5,0.999))
+    optimizerD = optim.RMSprop(filter(lambda p: p.requires_grad, sdnet.parameters()), lr=args.lr*4)
+    optimizerG = optim.RMSprop(sgnet.parameters(),lr=args.lr)
     # criterion = nn.SmoothL1Loss().cuda()
 
     print('Loading the dataset...')
@@ -131,12 +137,12 @@ def train():
     # Dnet.train()
     # Gnet.train()
     # create batch iterator
-    for _ in range(5):
-        loss_d = train_dnet(PokéBall, sgnet, sdnet, optimizerD, 1.)
+    sdnet.train()
+    sgnet.train()
     for iteration in range(args.start_iter + 1, args.epochs):
         print('Epoch %d' % iteration, end=' ')
         # train_encoder_decoder(PokéBall, Dnet, Gnet, criterion, optimizerD, optimizerG)
-        loss_d = train_dnet(PokéBall, sgnet, sdnet, optimizerD, 0.7)
+        loss_d = train_dnet(PokéBall, sgnet, sdnet, optimizerD)
         for i in range(2):
             loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
         data.shuffle()
