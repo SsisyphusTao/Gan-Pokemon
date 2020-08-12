@@ -13,23 +13,20 @@ from os.path import join as ops
 parser = argparse.ArgumentParser(
     description="Pokémon, Getto Daze!")
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--batch_size', default=64, type=int,
+parser.add_argument('--batch_size', default=16, type=int,
                     help='Batch size for training')
-parser.add_argument('--gnet', type=str, default='checkpoints/Pokemonet_sg.pth',
+parser.add_argument('--gnet', type=str, default='checkpoints/g/Pokemonet_sg.pth400',
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--dnet', type=str, default='checkpoints/Pokemonet_sd.pth',
+parser.add_argument('--dnet', type=str, default='checkpoints/d/Pokemonet_sd.pth400',
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--epochs', '-e', default=400, type=int,
                     help='the number of training epochs')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--lr', '--learning-rate', default=1e-5, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-6, type=float,
                     help='initial learning rate')
 args = parser.parse_args()
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
-
-one = torch.tensor(1)
-mone = torch.tensor(-1)
 
 def train_dnet(loader, sgnet, sdnet, optimizer):
     loss_amount = 0
@@ -38,8 +35,8 @@ def train_dnet(loader, sgnet, sdnet, optimizer):
         # forward & backprop
         optimizer.zero_grad()
         for p in filter(lambda p: p.requires_grad, sdnet.parameters()):
-            p.data.clamp_(-0.001, 0.001)
-        
+            p.data.clamp_(-1.1, 1.1)
+
         Pokémon = batch.permute(0,3,1,2).type(torch.float).cuda()
         size = Pokémon.size()[0]
         fakePoké = sgnet(torch.randn(size, 100))
@@ -47,15 +44,13 @@ def train_dnet(loader, sgnet, sdnet, optimizer):
         preds_r = sdnet(Pokémon).mean()
         preds_f = sdnet(fakePoké).mean()
         
-        alpha = np.random.rand() / 10 + 0.9
-        beta = np.random.rand() / 10 + 0.9
+        alpha = np.random.rand() * 0.3 + 0.7
+        beta = np.random.rand() * 0.3 + 0.7
         if np.random.rand() > 0.05:
-            preds_r.backward(one*alpha)
-            preds_f.backward(mone*beta)
+            loss=-preds_r*alpha+preds_f*beta
         else:
-            preds_f.backward(one*alpha)
-            preds_r.backward(mone*beta)
-        loss=preds_r-preds_f
+            loss=preds_r*alpha-preds_f*beta
+        loss.backward()
         optimizer.step()
         loss_amount += loss.item()
     print('Dnet Loss: %.6f' % (loss_amount/iteration))
@@ -73,8 +68,8 @@ def train_gnet(loader, sgnet, sdnet, optimizer):
 
         realPoké = sgnet(torch.randn(size,100))
         
-        loss = sdnet(realPoké).mean()
-        loss.backward(one)
+        loss = -sdnet(realPoké).mean()
+        loss.backward()
 
         optimizer.step()
         loss_amount += loss.item()
@@ -148,7 +143,7 @@ def train():
         loss_d = train_dnet(PokéBall, sgnet, sdnet, optimizerD)
         loss_g = train_gnet(PokéBall, sgnet, sdnet, optimizerG)
         data.shuffle()
-        if not (iteration-args.start_iter) == 0 and iteration % 10 == 0:
+        if not (iteration-args.start_iter) == 0 and iteration % 20 == 0:
             torch.save(sdnet.state_dict(),
                         ops('checkpoints', 'd', 'Pokemonet_sd.pth%03d' % iteration))
             torch.save(sgnet.state_dict(),

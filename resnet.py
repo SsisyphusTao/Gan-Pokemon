@@ -352,7 +352,7 @@ class snGenerator(nn.Module):
         super().__init__()
         self.z_dim = z_dim
 
-        self.dense = nn.Linear(self.z_dim, 8 * 8 * GEN_SIZE)
+        self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
         self.final = nn.Conv2d(GEN_SIZE, 3, 3, stride=1, padding=1)
         nn.init.xavier_uniform_(self.dense.weight.data, 1.)
         nn.init.xavier_uniform_(self.final.weight.data, 1.)
@@ -367,7 +367,7 @@ class snGenerator(nn.Module):
             nn.Tanh())
 
     def forward(self, z):
-        return self.model(self.dense(z).view(-1, GEN_SIZE, 8, 8))
+        return self.model(self.dense(z).view(-1, GEN_SIZE, 4, 4))
 
 class ResBlockDiscriminator(nn.Module):
 
@@ -389,20 +389,20 @@ class ResBlockDiscriminator(nn.Module):
         else:
             self.model = nn.Sequential(
                 nn.LeakyReLU(),
-                SpectralNorm(self.conv1),
+                SpectralNorm(nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1)),
                 nn.LeakyReLU(),
                 SpectralNorm(self.conv2),
-                nn.AvgPool2d(2, stride=stride, padding=0)
+                # nn.AvgPool2d(2, stride=stride, padding=0)
                 )
         self.bypass = nn.Sequential()
         if stride != 1:
 
-            self.bypass_conv = nn.Conv2d(in_channels,out_channels, 1, 1, padding=0)
+            self.bypass_conv = nn.Conv2d(in_channels,out_channels, 1, stride=stride)
             nn.init.xavier_uniform_(self.bypass_conv.weight.data, math.sqrt(2))
 
             self.bypass = nn.Sequential(
                 SpectralNorm(self.bypass_conv),
-                nn.AvgPool2d(2, stride=stride, padding=0)
+                # nn.AvgPool2d(2, stride=stride, padding=0)
             )
             # if in_channels == out_channels:
             #     self.bypass = nn.AvgPool2d(2, stride=stride, padding=0)
@@ -422,9 +422,9 @@ class FirstResBlockDiscriminator(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(FirstResBlockDiscriminator, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, stride, padding=1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, padding=1)
-        self.bypass_conv = nn.Conv2d(in_channels, out_channels, 1, 1, padding=0)
+        self.bypass_conv = nn.Conv2d(in_channels, out_channels, 1, stride, padding=0)
         nn.init.xavier_uniform_(self.conv1.weight.data, 1.)
         nn.init.xavier_uniform_(self.conv2.weight.data, 1.)
         nn.init.xavier_uniform_(self.bypass_conv.weight.data, math.sqrt(2))
@@ -434,10 +434,10 @@ class FirstResBlockDiscriminator(nn.Module):
             SpectralNorm(self.conv1),
             nn.LeakyReLU(),
             SpectralNorm(self.conv2),
-            nn.AvgPool2d(2)
+            # nn.AvgPool2d(2)
             )
         self.bypass = nn.Sequential(
-            nn.AvgPool2d(2),
+            # nn.AvgPool2d(2),
             SpectralNorm(self.bypass_conv),
         )
 
@@ -451,15 +451,15 @@ class snDiscriminator(nn.Module):
         self.model = nn.Sequential(
                 FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(),
-                nn.AvgPool2d(8),
+                # nn.AvgPool2d(8),
             )
-        self.fc = nn.Linear(DISC_SIZE, 1)
+        self.fc = nn.Linear(DISC_SIZE*16, 1)
         nn.init.xavier_uniform_(self.fc.weight.data, 1.)
         self.fc = SpectralNorm(self.fc)
 
     def forward(self, x):
         x = torch.nn.functional.interpolate(x, size=[32,32], mode='bilinear', align_corners=True)
-        return self.fc(self.model(x).view(-1,DISC_SIZE))
+        return self.fc(self.model(x).view(-1,DISC_SIZE*16))
