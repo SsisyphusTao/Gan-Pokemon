@@ -325,16 +325,16 @@ class ResBlockGenerator(nn.Module):
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, padding=1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, padding=1)
-        nn.init.xavier_uniform_(self.conv1.weight.data, 1.)
-        nn.init.xavier_uniform_(self.conv2.weight.data, 1.)
+        nn.init.uniform_(self.conv1.weight.data, a=0, b=0.2)
+        nn.init.uniform_(self.conv2.weight.data, a=0, b=0.2)
 
         self.model = nn.Sequential(
             nn.BatchNorm2d(in_channels),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Upsample(scale_factor=2),
             self.conv1,
             nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             self.conv2
             )
         self.bypass = nn.Sequential()
@@ -354,15 +354,16 @@ class snGenerator(nn.Module):
 
         self.dense = nn.Linear(self.z_dim, 4 * 4 * GEN_SIZE)
         self.final = nn.Conv2d(GEN_SIZE, 3, 3, stride=1, padding=1)
-        nn.init.xavier_uniform_(self.dense.weight.data, 1.)
-        nn.init.xavier_uniform_(self.final.weight.data, 1.)
+        nn.init.uniform_(self.dense.weight.data, a=0, b=0.2)
+        nn.init.uniform_(self.final.weight.data, a=0, b=0.2)
 
         self.model = nn.Sequential(
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
+            ResBlockGenerator(GEN_SIZE, GEN_SIZE, stride=2),
             nn.BatchNorm2d(GEN_SIZE),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             self.final,
             nn.Tanh())
 
@@ -376,23 +377,24 @@ class ResBlockDiscriminator(nn.Module):
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, padding=1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, padding=1)
-        nn.init.xavier_uniform_(self.conv1.weight.data, 1.)
-        nn.init.xavier_uniform_(self.conv2.weight.data, 1.)
+        nn.init.uniform_(self.conv1.weight.data, a=0, b=0.2)
+        nn.init.uniform_(self.conv2.weight.data, a=0, b=0.2)
 
         if stride == 1:
             self.model = nn.Sequential(
-                nn.LeakyReLU(),
+                nn.LeakyReLU(0.2, inplace=True),
                 SpectralNorm(self.conv1),
-                nn.LeakyReLU(),
+                nn.LeakyReLU(0.2, inplace=True),
                 SpectralNorm(self.conv2)
                 )
         else:
             self.model = nn.Sequential(
-                nn.LeakyReLU(),
+                nn.LeakyReLU(0.2, inplace=True),
                 SpectralNorm(nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1)),
-                nn.LeakyReLU(),
+                nn.LeakyReLU(0.2, inplace=True),
                 SpectralNorm(self.conv2),
                 # nn.AvgPool2d(2, stride=stride, padding=0)
+                nn.Conv2d(out_channels, out_channels, 2, stride=stride, groups=out_channels)
                 )
         self.bypass = nn.Sequential()
         if stride != 1:
@@ -403,6 +405,7 @@ class ResBlockDiscriminator(nn.Module):
             self.bypass = nn.Sequential(
                 SpectralNorm(self.bypass_conv),
                 # nn.AvgPool2d(2, stride=stride, padding=0)
+                nn.Conv2d(out_channels, out_channels, 2, stride=stride, groups=out_channels)
             )
             # if in_channels == out_channels:
             #     self.bypass = nn.AvgPool2d(2, stride=stride, padding=0)
@@ -425,19 +428,21 @@ class FirstResBlockDiscriminator(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, stride, padding=1)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, padding=1)
         self.bypass_conv = nn.Conv2d(in_channels, out_channels, 1, stride, padding=0)
-        nn.init.xavier_uniform_(self.conv1.weight.data, 1.)
-        nn.init.xavier_uniform_(self.conv2.weight.data, 1.)
+        nn.init.uniform_(self.conv1.weight.data, a=0, b=0.2)
+        nn.init.uniform_(self.conv2.weight.data, a=0, b=0.2)
         nn.init.xavier_uniform_(self.bypass_conv.weight.data, math.sqrt(2))
 
         # we don't want to apply ReLU activation to raw image before convolution transformation.
         self.model = nn.Sequential(
             SpectralNorm(self.conv1),
-            nn.LeakyReLU(),
+            nn.LeakyReLU(0.2, inplace=True),
             SpectralNorm(self.conv2),
             # nn.AvgPool2d(2)
+            nn.Conv2d(out_channels, out_channels, 2, groups=out_channels, padding=1)
             )
         self.bypass = nn.Sequential(
             # nn.AvgPool2d(2),
+            nn.Conv2d(in_channels, in_channels, 2, groups=in_channels, padding=1),
             SpectralNorm(self.bypass_conv),
         )
 
@@ -451,15 +456,16 @@ class snDiscriminator(nn.Module):
         self.model = nn.Sequential(
                 FirstResBlockDiscriminator(3, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
-                nn.LeakyReLU(),
+                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
+                nn.LeakyReLU(0.2, inplace=True),
                 # nn.AvgPool2d(8),
+                nn.Conv2d(DISC_SIZE, DISC_SIZE, 8, groups=DISC_SIZE)
             )
-        self.fc = nn.Linear(DISC_SIZE*16, 1)
-        nn.init.xavier_uniform_(self.fc.weight.data, 1.)
+        self.fc = nn.Linear(DISC_SIZE, 1)
+        nn.init.uniform_(self.fc.weight.data, a=0, b=0.2)
         self.fc = SpectralNorm(self.fc)
 
     def forward(self, x):
-        x = torch.nn.functional.interpolate(x, size=[32,32], mode='bilinear', align_corners=True)
-        return self.fc(self.model(x).view(-1,DISC_SIZE*16))
+        x = torch.nn.functional.interpolate(x, size=[64,64], mode='bilinear', align_corners=True)
+        return self.fc(self.model(x).view(-1,DISC_SIZE))
