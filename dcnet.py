@@ -1,97 +1,103 @@
 import torch
 import torch.nn as nn
 
-z_dimension = 100
-nc = 3  #num of channels
-ndf = 64  #判别网络中的初始feature数
-ngf = 64  #生成网络中的初始feature数
+class DCGAN_D(nn.Module):
+    def __init__(self, isize, nz, nc, ndf, n_extra_layers=0):
+        super(DCGAN_D, self).__init__()
+        assert isize % 16 == 0, "isize has to be a multiple of 16"
 
-##Discriminator
-class Discriminator(nn.Module):
-    def __init__(self):
-        super(Discriminator, self).__init__()
-        self.dis = nn.Sequential(
-            ##input is nc*64*64
-            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
+        main = nn.Sequential()
+        # input is nc x isize x isize
+        main.add_module('initial:{0}-{1}:conv'.format(nc, ndf),
+                        nn.Conv2d(nc, ndf, 4, 2, 1, bias=False))
+        main.add_module('initial:{0}:relu'.format(ndf),
+                        nn.LeakyReLU(0.2, inplace=True))
+        csize, cndf = isize / 2, ndf
 
-            ## state size ndf*32*32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
+        # Extra layers
+        for t in range(n_extra_layers):
+            main.add_module('extra-layers-{0}:{1}:conv'.format(t, cndf),
+                            nn.Conv2d(cndf, cndf, 3, 1, 1, bias=False))
+            main.add_module('extra-layers-{0}:{1}:batchnorm'.format(t, cndf),
+                            nn.BatchNorm2d(cndf))
+            main.add_module('extra-layers-{0}:{1}:relu'.format(t, cndf),
+                            nn.LeakyReLU(0.2, inplace=True))
 
-            ##state size (ndf*2)*16*16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
+        while csize > 4:
+            in_feat = cndf
+            out_feat = cndf * 2
+            main.add_module('pyramid:{0}-{1}:conv'.format(in_feat, out_feat),
+                            nn.Conv2d(in_feat, out_feat, 4, 2, 1, bias=False))
+            main.add_module('pyramid:{0}:batchnorm'.format(out_feat),
+                            nn.BatchNorm2d(out_feat))
+            main.add_module('pyramid:{0}:relu'.format(out_feat),
+                            nn.LeakyReLU(0.2, inplace=True))
+            cndf = cndf * 2
+            csize = csize / 2
 
-            ##state size (ndf*4)*8*8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-
-            ##state size (ndf*8)*4*4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid())
-        self.weights_init()
-
-    def forward(self, x):
-        x = self.dis(x)
-        return x.view(-1, 1).squeeze(1)
-    
-    # custom weights initialization called on netG and netD
-    def weights_init(self):
-        for _, m in self.dis.named_modules():
-            if isinstance(m, nn.Conv2d):
-                m.weight.data.normal_(0.0, 0.02)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.normal_(1.0, 0.02)
-                m.bias.data.fill_(0)
+        # state size. K x 4 x 4
+        main.add_module('final:{0}-{1}:conv'.format(cndf, 1),
+                        nn.Conv2d(cndf, 1, 4, 1, 0, bias=False))
+        self.main = main
 
 
-##Generator
-class Generator(nn.Module):
-    def __init__(self):
-        super(Generator, self).__init__()
-        self.gen = nn.Sequential(
+    def forward(self, input):
+        output = self.main(input)
+            
+        output = output.mean(0)
+        return output.view(1)
 
-            ##input is z_dimension
-            nn.ConvTranspose2d(z_dimension, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
+class DCGAN_G(nn.Module):
+    def __init__(self, isize, nz, nc, ngf, n_extra_layers=0):
+        super(DCGAN_G, self).__init__()
+        assert isize % 16 == 0, "isize has to be a multiple of 16"
 
-            ##state size (ngf*8)*4*4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
+        cngf, tisize = ngf//2, 4
+        while tisize != isize:
+            cngf = cngf * 2
+            tisize = tisize * 2
 
-            ##state size (ngf*4)*8*8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
+        main = nn.Sequential()
+        # input is Z, going into a convolution
+        main.add_module('initial:{0}-{1}:convt'.format(nz, cngf),
+                        nn.ConvTranspose2d(nz, cngf, 4, 1, 0, bias=False))
+        main.add_module('initial:{0}:batchnorm'.format(cngf),
+                        nn.BatchNorm2d(cngf))
+        main.add_module('initial:{0}:relu'.format(cngf),
+                        nn.ReLU(True))
 
-            ##state size (ngf*2)*16*16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
+        csize, cndf = 4, cngf
+        while csize < isize//2:
+            main.add_module('pyramid:{0}-{1}:convt'.format(cngf, cngf//2),
+                            nn.ConvTranspose2d(cngf, cngf//2, 4, 2, 1, bias=False))
+            main.add_module('pyramid:{0}:batchnorm'.format(cngf//2),
+                            nn.BatchNorm2d(cngf//2))
+            main.add_module('pyramid:{0}:relu'.format(cngf//2),
+                            nn.ReLU(True))
+            cngf = cngf // 2
+            csize = csize * 2
 
-            ##state size ngf*32*32
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh(),
-        )
-        self.weights_init()
+        # Extra layers
+        for t in range(n_extra_layers):
+            main.add_module('extra-layers-{0}:{1}:conv'.format(t, cngf),
+                            nn.Conv2d(cngf, cngf, 3, 1, 1, bias=False))
+            main.add_module('extra-layers-{0}:{1}:batchnorm'.format(t, cngf),
+                            nn.BatchNorm2d(cngf))
+            main.add_module('extra-layers-{0}:{1}:relu'.format(t, cngf),
+                            nn.ReLU(True))
 
-    def forward(self, x):
-        x = self.gen(x)
-        return x
-    
-    # custom weights initialization called on netG and netD
-    def weights_init(self):
-        for _, m in self.gen.named_modules():
-            if isinstance(m, nn.Conv2d):
-                m.weight.data.normal_(0.0, 0.02)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.normal_(1.0, 0.02)
-                m.bias.data.fill_(0)
-            elif isinstance(m, nn.ConvTranspose2d):
-                m.weight.data.normal_(0.0, 0.02)
+        main.add_module('final:{0}-{1}:convt'.format(cngf, nc),
+                        nn.ConvTranspose2d(cngf, nc, 4, 2, 1, bias=False))
+        main.add_module('final:{0}:tanh'.format(nc),
+                        nn.Tanh())
+        self.main = main
+
+    def forward(self, input):
+        output = self.main(input)
+        return output
+
+def Generator():
+    return DCGAN_G(64, 100, 3, 64)
+
+def Discriminator():
+    return DCGAN_D(64, 100, 3, 64)

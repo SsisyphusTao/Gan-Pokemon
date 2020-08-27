@@ -20,9 +20,9 @@ class Pokédex(Dataset):
 
     def __getitem__(self, index):
         pokémon = self.Pokémons[index]
-        a = np.random.randint(30) - 15 
-        m = cv.getRotationMatrix2D((32,32), a, 1)
-        pokémon = cv.warpAffine(pokémon, m, (64,64))
+        # a = np.random.randint(30) - 15 
+        # m = cv.getRotationMatrix2D((32,32), a, 1)
+        # pokémon = cv.warpAffine(pokémon, m, (64,64))
         pokémon -= mean
         pokémon /= std
         if np.random.randint(2):
