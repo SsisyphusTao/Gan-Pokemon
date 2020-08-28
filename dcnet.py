@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from spectral_normalization import SpectralNorm
 
 class DCGAN_D(nn.Module):
     def __init__(self, isize, nz, nc, ndf, n_extra_layers=0):
@@ -17,9 +18,7 @@ class DCGAN_D(nn.Module):
         # Extra layers
         for t in range(n_extra_layers):
             main.add_module('extra-layers-{0}:{1}:conv'.format(t, cndf),
-                            nn.Conv2d(cndf, cndf, 3, 1, 1, bias=False))
-            main.add_module('extra-layers-{0}:{1}:batchnorm'.format(t, cndf),
-                            nn.BatchNorm2d(cndf))
+                            SpectralNorm(nn.Conv2d(cndf, cndf, 3, 1, 1, bias=False)))
             main.add_module('extra-layers-{0}:{1}:relu'.format(t, cndf),
                             nn.LeakyReLU(0.2, inplace=True))
 
@@ -27,9 +26,7 @@ class DCGAN_D(nn.Module):
             in_feat = cndf
             out_feat = cndf * 2
             main.add_module('pyramid:{0}-{1}:conv'.format(in_feat, out_feat),
-                            nn.Conv2d(in_feat, out_feat, 4, 2, 1, bias=False))
-            main.add_module('pyramid:{0}:batchnorm'.format(out_feat),
-                            nn.BatchNorm2d(out_feat))
+                            SpectralNorm(nn.Conv2d(in_feat, out_feat, 4, 2, 1, bias=False)))
             main.add_module('pyramid:{0}:relu'.format(out_feat),
                             nn.LeakyReLU(0.2, inplace=True))
             cndf = cndf * 2

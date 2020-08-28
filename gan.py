@@ -16,11 +16,11 @@ parser = argparse.ArgumentParser(
 train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--batch_size', default=128, type=int,
                     help='Batch size for training')
-parser.add_argument('--gnet', type=str, default='checkpoints/g/Pokemonet_sg.pth400',
+parser.add_argument('--gnet', type=str, default=None,
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--dnet', type=str, default='checkpoints/d/Pokemonet_sd.pth400',
+parser.add_argument('--dnet', type=str, default=None,
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--epochs', '-e', default=5000, type=int,
+parser.add_argument('--epochs', '-e', default=8000, type=int,
                     help='the number of training epochs')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
@@ -35,8 +35,6 @@ def train_dnet(loader,gnet, dnet, optimizer):
     for iteration, batch in enumerate(loader):
         # forward & backprop
         optimizer.zero_grad()
-        for p in dnet.parameters():
-            p.data.clamp_(-0.01, 0.01)
 
         Pokémon = batch[0].cuda()
         fakePoké = gnet(torch.randn(args.batch_size, 100, 1, 1).cuda())
@@ -44,12 +42,6 @@ def train_dnet(loader,gnet, dnet, optimizer):
         preds_r = dnet(Pokémon)
         preds_f = dnet(fakePoké)
         
-        # alpha = np.random.rand() * 0.1 + 0.9
-        # beta = np.random.rand() * 0.1 + 0.9
-        # if np.random.rand() > 0.05:
-        #     loss=-preds_r*alpha+preds_f*beta
-        # else:
-        #     loss=preds_r*alpha-preds_f*beta
         loss = -preds_r+preds_f
         loss.backward()
         optimizer.step()
@@ -70,7 +62,7 @@ def train_gnet(loader, gnet, dnet, optimizer):
 
         optimizer.step()
         loss_amount += loss.item()
-    print('Gnet Loss: %.6f' % (loss_amount/iteration))
+    print('\033[31mGnet Loss:\033[32m %.6f\033[0m' % (loss_amount/iteration))
     return loss_amount/iteration
 
 def train():
@@ -79,20 +71,20 @@ def train():
     Gnet = Generator().cuda()
     Dnet = Discriminator().cuda()
 
-    optimizerD = optim.RMSprop(Dnet.parameters(), lr=args.lr)
-    optimizerG = optim.RMSprop(Gnet.parameters(),lr=args.lr)
-    criterion = nn.BCELoss().cuda()
+    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, Dnet.parameters()), lr=args.lr, betas=(0, 0.999))
+    optimizerG = optim.Adam(Gnet.parameters(), lr=args.lr, betas=(0, 0.999))
 
-    print('Loading the dataset...')
-    dataset = torchvision.datasets.ImageFolder(root='/ai/ailab/User/huangtao/Gan-Pokemon/imgs',
+    print('Loading the dataset...', end='')
+    Pokedex = torchvision.datasets.ImageFolder(root='/ai/ailab/User/huangtao/Gan-Pokemon/imgs',
                                     transform=torchvision.transforms.Compose([
                                     torchvision.transforms.Resize(64),
                                     torchvision.transforms.CenterCrop(64),
                                     torchvision.transforms.ToTensor(),
                                     torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                                 ]))
-    PokéBall = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    print('Training GhostNet on:', 'Pokedex')
+    PokéBall = DataLoader(Pokedex, batch_size=args.batch_size, shuffle=True, num_workers=16)
+    print('Done!')
+    print('Training GAN on:', 'Pokedex')
     print('Using the specified args:')
     print(args)
 
@@ -104,10 +96,10 @@ def train():
         for _ in range(2):
             loss_d = train_dnet(PokéBall, Gnet, Dnet, optimizerD)
         loss_g = train_gnet(PokéBall, Gnet, Dnet, optimizerG)
-        if not (iteration-args.start_iter) == 0 and iteration % 50 == 0:
+        if not (iteration-args.start_iter) == 0 and iteration % 100 == 0:
             torch.save(Dnet.state_dict(),
-                        ops('checkpoints', 'd', 'Pokemonet_sd.pth%03d' % iteration))
+                        ops('checkpoints', 'd', 'Pokemonet_sd.pth%04d' % iteration))
             torch.save(Gnet.state_dict(),
-                        ops('checkpoints', 'g', 'Pokemonet_sg.pth%03d' % iteration))
+                        ops('checkpoints', 'g', 'Pokemonet_sg.pth%04d' % iteration))
 if __name__ == '__main__':
     train()
