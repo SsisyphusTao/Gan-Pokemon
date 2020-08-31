@@ -53,16 +53,20 @@ class ResBlockDiscriminator(nn.Module):
         if stride == 1:
             self.model = nn.Sequential(
                 nn.LeakyReLU(0.2, inplace=True),
-                SpectralNorm(self.conv1),
+                self.conv1,
+                nn.BatchNorm2d(out_channels),
                 nn.LeakyReLU(0.2, inplace=True),
-                SpectralNorm(self.conv2)
+                self.conv2,
+                nn.BatchNorm2d(out_channels),
                 )
         else:
             self.model = nn.Sequential(
                 nn.LeakyReLU(0.2, inplace=True),
-                SpectralNorm(self.conv1),
+                self.conv1,
+                nn.BatchNorm2d(out_channels),
                 nn.LeakyReLU(0.2, inplace=True),
-                SpectralNorm(self.conv2),
+                self.conv2,
+                nn.BatchNorm2d(out_channels),
                 self.pooling1
                 )
         self.bypass = nn.Sequential()
@@ -74,7 +78,8 @@ class ResBlockDiscriminator(nn.Module):
             nn.init.xavier_normal_(self.pooling2.weight.data, 0.02)
 
             self.bypass = nn.Sequential(
-                SpectralNorm(self.bypass_conv),
+                self.bypass_conv,
+                nn.BatchNorm2d(out_channels),
                 self.pooling2
             )
             # if in_channels == out_channels:
@@ -108,14 +113,17 @@ class FirstResBlockDiscriminator(nn.Module):
 
         # we don't want to apply ReLU activation to raw image before convolution transformation.
         self.model = nn.Sequential(
-            SpectralNorm(self.conv1),
+            self.conv1,
+            nn.BatchNorm2d(out_channels),
             nn.LeakyReLU(0.2, inplace=True),
-            SpectralNorm(self.conv2),
+            self.conv2,
+            nn.BatchNorm2d(out_channels),
             self.pooling1
             )
         self.bypass = nn.Sequential(
             self.pooling2,
-            SpectralNorm(self.bypass_conv),
+            self.bypass_conv,
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x):
@@ -150,20 +158,21 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
-        self.pooling8 = nn.Conv2d(DISC_SIZE, DISC_SIZE, 8, 4, 1, groups=DISC_SIZE, bias=False)
-        nn.init.xavier_normal_(self.pooling8.weight.data, 0.02)
+        self.conv = nn.Conv2d(DISC_SIZE, DISC_SIZE, 8, 4, 1, groups=DISC_SIZE, bias=False)
+        self.pooling = nn.Sequential(
+            self.conv,
+            nn.LeakyReLU(0.2, inplace=True))
+        nn.init.xavier_normal_(self.conv.weight.data, 0.02)
         self.model = nn.Sequential(
                 FirstResBlockDiscriminator(channels, DISC_SIZE, stride=2),
-                ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE, stride=2),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 ResBlockDiscriminator(DISC_SIZE, DISC_SIZE),
                 nn.LeakyReLU(0.2, inplace=True),
-                self.pooling8,
+                self.pooling,
             )
         self.fc = nn.Conv2d(DISC_SIZE, 1, 1, bias=False)
         nn.init.xavier_normal_(self.fc.weight.data, 0.02)
-        self.fc = SpectralNorm(self.fc)
 
     def forward(self, x):
-        return self.fc(self.model(x)).squeeze()
+        return self.fc(self.model(x)).mean().view(1)

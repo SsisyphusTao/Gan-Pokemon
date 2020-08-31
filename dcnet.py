@@ -10,7 +10,7 @@ class DCGAN_D(nn.Module):
         main = nn.Sequential()
         # input is nc x isize x isize
         main.add_module('initial:{0}-{1}:conv'.format(nc, ndf),
-                        nn.Conv2d(nc, ndf, 4, 2, 1, bias=False))
+                        SpectralNorm(nn.Conv2d(nc, ndf, 4, 2, 1, bias=False)))
         main.add_module('initial:{0}:relu'.format(ndf),
                         nn.LeakyReLU(0.2, inplace=True))
         csize, cndf = isize / 2, ndf
@@ -34,7 +34,7 @@ class DCGAN_D(nn.Module):
 
         # state size. K x 4 x 4
         main.add_module('final:{0}-{1}:conv'.format(cndf, 1),
-                        nn.Conv2d(cndf, 1, 4, 1, 0, bias=False))
+                        SpectralNorm(nn.Conv2d(cndf, 1, 4, 1, 0, bias=False)))
         self.main = main
 
 

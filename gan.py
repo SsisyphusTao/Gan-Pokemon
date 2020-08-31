@@ -1,5 +1,5 @@
 from Pokedex import Pokédex
-from dcnet import Discriminator, Generator
+from resnet import Discriminator, Generator
 
 import torch
 import torchvision
@@ -71,8 +71,8 @@ def train():
     Gnet = Generator().cuda()
     Dnet = Discriminator().cuda()
 
-    optimizerD = optim.Adam(filter(lambda p: p.requires_grad, Dnet.parameters()), lr=args.lr, betas=(0, 0.999))
-    optimizerG = optim.Adam(Gnet.parameters(), lr=args.lr, betas=(0, 0.999))
+    optimizerD = optim.RMSprop(filter(lambda p: p.requires_grad, Dnet.parameters()), lr=args.lr)
+    optimizerG = optim.RMSprop(Gnet.parameters(), lr=args.lr)
 
     print('Loading the dataset...', end='')
     Pokedex = torchvision.datasets.ImageFolder(root='/ai/ailab/User/huangtao/Gan-Pokemon/imgs',
