@@ -1,5 +1,5 @@
 from Pokedex import Pokédex
-from resnet import Discriminator, Generator
+from dcnet import Discriminator, Generator
 
 import torch
 import torchvision
@@ -35,6 +35,8 @@ def train_dnet(loader,gnet, dnet, optimizer):
     for iteration, batch in enumerate(loader):
         # forward & backprop
         optimizer.zero_grad()
+        for p in dnet.parameters():
+            p.data.clamp_(-0.02, 0.02)
 
         Pokémon = batch[0].cuda()
         fakePoké = gnet(torch.randn(args.batch_size, 100, 1, 1).cuda())
@@ -71,7 +73,7 @@ def train():
     Gnet = Generator().cuda()
     Dnet = Discriminator().cuda()
 
-    optimizerD = optim.RMSprop(filter(lambda p: p.requires_grad, Dnet.parameters()), lr=args.lr)
+    optimizerD = optim.RMSprop(Dnet.parameters(), lr=args.lr*4)
     optimizerG = optim.RMSprop(Gnet.parameters(), lr=args.lr)
 
     print('Loading the dataset...', end='')
@@ -79,6 +81,8 @@ def train():
                                     transform=torchvision.transforms.Compose([
                                     torchvision.transforms.Resize(64),
                                     torchvision.transforms.CenterCrop(64),
+                                    torchvision.transforms.RandomRotation(5),
+                                    torchvision.transforms.RandomHorizontalFlip(),
                                     torchvision.transforms.ToTensor(),
                                     torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                                 ]))
@@ -88,12 +92,12 @@ def train():
     print('Using the specified args:')
     print(args)
 
-    for i in range(10):
+    for i in range(20):
         loss_d = train_dnet(PokéBall, Gnet, Dnet, optimizerD)
 
     for iteration in range(args.start_iter + 1, args.epochs + 1):
         print('Epoch %d' % iteration)
-        for _ in range(2):
+        for _ in range(5):
             loss_d = train_dnet(PokéBall, Gnet, Dnet, optimizerD)
         loss_g = train_gnet(PokéBall, Gnet, Dnet, optimizerG)
         if not (iteration-args.start_iter) == 0 and iteration % 100 == 0:
